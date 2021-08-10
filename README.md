@@ -4,7 +4,7 @@ Coming soon, thank you for your patience.
 
 ### Get the Datasets
 
-First, download and decompress data/[NYTimes_orig](https://uofi.box.com/s/ib5fn1f1h0rbea1z05fwi98rs0481w9l), data/[VOA] to be released this week, and [NLP_toolbox](https://uofi.box.com/s/d0ywa0qhlwxtpmrn3n0ye5vd9o4bbj1y). 
+First, download and decompress data/[NYTimes_orig](https://uofi.box.com/s/ib5fn1f1h0rbea1z05fwi98rs0481w9l), data/[VOA](https://drive.google.com/file/d/1VAwClg1rlQYFOzZiOEw6gskS7w50VLjL/view?usp=sharing) to be released this week, and [NLP_toolbox](https://uofi.box.com/s/d0ywa0qhlwxtpmrn3n0ye5vd9o4bbj1y). 
 
 ### Preprocess Data 
 
