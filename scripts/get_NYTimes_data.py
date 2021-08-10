@@ -53,7 +53,7 @@ def grab_title(fname, new_fname):
     d, m, y = int(date_.split("/")[2]), int(date_.split("/")[1]), int(date_.split("/")[0])
     date_ = date(day=d, month=m, year=y).strftime('%B %d %Y')
     title += "\n" + date_ + "\t NYTimes"
-    with open(dest_dir+"/title/txt/"+new_fname+"_title.txt", "w") as f:
+    with open(dest_dir+"/title/txt/"+new_fname+"_metadata.txt", "w") as f:
         f.write(title)
 
 def get_fID_from_metadata(title, text):
