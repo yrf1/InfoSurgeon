@@ -112,9 +112,9 @@ class KEDataset(Dataset):
         return src, tgt, segs, clss 
 
     def get_local_f(self, artID):
-        art_triplets, _ = self.KG_data[artID]
+        art_triplets, modality, _ = self.KG_data[artID]
         if "VOA" in self.data_dir[0] or "VOA" in self.data_di:
-            art_triplet_labels = self.KG_data[artID][1]
+            art_triplet_labels = self.KG_data[artID][-1]
         edges, node_feats = [], []
         edge_feats, node_lookup = [], {}
         edge_feats2, train_flag, ind_feats = [], [], []
@@ -149,17 +149,24 @@ class KEDataset(Dataset):
             edge_feats.append(edge_feat)
             edge_feat2, edge_len2 = self.str2idx(self.getBK(trip[0],trip[2]), 512)
             if trip[0][1][:2] == "m." and trip[2][1][:2] == "m.":
-                ind_feats.append([edge_len2, 0, 0])
+                ind_feats.append(modality[i]+[edge_len2, 0, 0])
             elif trip[0][1][:2] == "m." or trip[2][1][:2] == "m.":
-                ind_feats.append([0, edge_len2, 0])
+                ind_feats.append(modality[i]+[0, edge_len2, 0])
             else:
-                ind_feats.append([0, 0, edge_len2])
+                ind_feats.append(modality[i]+[0, 0, edge_len2])
             edge_feats2.append(edge_feat2)
             edges.append((node_lookup[node_num1[0]], node_lookup[node_num2[0]]))
             train_flag.append(train_ctr_val)
             if "VOA" in self.data_dir[0] or "VOA" in self.data_dir:
                 KE_label.append(art_triplet_labels[i])
-            local2global_edges.append((node_lookup[node_num1[0]],0))
+            if modality[i][0] == 1 or 1 not in modality[i]:
+                local2global_edges.append((node_lookup[node_num1[0]],0))
+            if modality[i][1] == 1:
+                local2global_edges.append((node_lookup[node_num1[0]],1))
+            if modality[i][2] == 1:
+                local2global_edges.append((node_lookup[node_num1[0]],2))
+            if modality[i][3] == 1:
+                local2global_edges.append((node_lookup[node_num1[0]],3))
         return edges, node_feats, edge_feats, edge_feats2, ind_feats, train_flag, KE_label, local2global_edges
 
     def shorten_relation(self, r):

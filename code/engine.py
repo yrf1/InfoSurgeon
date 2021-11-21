@@ -1,6 +1,6 @@
 """
 Example usage for doc-level detection task:
-python code/engine.py --task doc-level --data_dir [data/NYTimes/] --lrate 5e-6 --num_epochs 4
+python code/engine.py --task doc-level --data_dir data/NYTimes/ --lrate 5e-6 --num_epochs 4
 python code/engine.py --task doc-level --data_dir data/VOA/ --lrate 5e-6 --num_epochs 4 --batch_size 2
 
 Example usage for KE-level detection task:

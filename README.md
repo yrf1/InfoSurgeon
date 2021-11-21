@@ -31,6 +31,7 @@ sh scripts/preproc_bert.sh "" title ${dataset}  #step 1c
 sh scripts/preproc_bua.sh ${dataset}  #step 2
 sh scripts/preproc_IE.sh ${dataset}  #step 3
 python data_preproc/prepare_indicator_factors.py ${dataset}
+
 # git clone https://github.com/NVIDIA/apex.git && cd apex && pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" . && cd .. && rm -rf apex
 # git clone https://github.com/NVIDIA/apex.git
 # cd apex
@@ -44,10 +45,10 @@ But this is still in beta development phase. If you encounter set-up or runtime 
 ### Run Misinformation Detection
 ```
 # Example usage for doc-level detection task:
-python code/engine.py --task doc-level --data_dir [data/${dataset}/] --lrate 5e-6 --num_epochs 5 --ckpt_name ${dataset}
+python code/engine.py --task doc-level --data_dir data/${dataset}/ --lrate 5e-6 --num_epochs 5 --ckpt_name ${dataset}
 
 Example usage for KE-level detection task:
-# python code/engine.py --task KE-level --data_dir [data/VOA/] --lrate 0.001 --ckpt_name VOA
+# python code/engine.py --task KE-level --data_dir data/VOA/ --lrate 0.001 --ckpt_name VOA
 ```
 
 ### Credits & Acknowledgements

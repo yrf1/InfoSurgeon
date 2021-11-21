@@ -34,8 +34,8 @@ class InfoSurgeon(nn.Module):
         self.fc = nn.Sequential(nn.Linear(1112+88, int(300/2)), \
                 nn.ReLU(), \
                 nn.Dropout(p=0.1))
-        self.fc_attn = nn.Linear(int(300/2)+3+50,int(300/2)+3+50)
-        self.classify_e = nn.Sequential(nn.Linear(306+2+2*49, 49), \
+        self.fc_attn = nn.Linear(int(300/2)+50+7,int(300/2)+50+7)
+        self.classify_e = nn.Sequential(nn.Linear(306+2+2*49+2*4, 49), \
             nn.Dropout(p=0.1), \
             nn.ReLU(), nn.Linear(49,2))
         self.W_arts = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
