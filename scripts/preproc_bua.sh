@@ -10,10 +10,10 @@ fi
 cd ./data_preproc/bottom-up-attention.pytorch
 
 # Need to download this file from browser
-#if [ ! -f bua-caffe-frcn-r101_with_attributes.pth ]
-#then
-#wget https://awma1-my.sharepoint.com/:u:/g/personal/yuz_l0_tn/EaXvCC3WjtlLvvEfLr3oa8UBLA21tcLh4L8YLbYXl6jgjg?download=1
-#fi
+if [ ! -f bua-caffe-frcn-r101_with_attributes.pth ]
+then
+wget -O bua-caffe-frcn-r101_with_attributes_fix36.pth https://awma1-my.sharepoint.com/:u:/g/personal/yuz_l0_tn/EUKhQ3hSRv9JrrW64qpNLSIBGoOjEGCkF8zvgBP9gKax-w?download=1
+fi
 
 cd detectron2
 pip install -e .
@@ -38,7 +38,7 @@ python3 extract_features.py --mode caffe \
 python3 extract_features.py --mode caffe \
 	  --num-cpus 32 \
 	    --extract-mode bbox_feats \
-	      --config-file configs/bua-caffe/extract-bua-caffe-r101.yaml \
+	      --config-file configs/bua-caffe/extract-bua-caffe-r101-fix36.yaml \
 	        --image-dir ${PROC_DIR_PRISTINE}/vision/data/jpg/jpg \
 		  --bbox-dir ${PROC_DIR_PRISTINE}/vision/data/jpg/bbox_36 \
 		    --out-dir ${PROC_DIR_PRISTINE}/bottom_up_attention --resume

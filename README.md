@@ -1,10 +1,9 @@
 # InfoSurgeon
 
-Coming soon, thank you for your patience.
 
 ### Get the Datasets
 
-First, download and decompress data/[NYTimes_orig](https://uofi.box.com/s/ib5fn1f1h0rbea1z05fwi98rs0481w9l), data/[VOA](https://drive.google.com/file/d/1VAwClg1rlQYFOzZiOEw6gskS7w50VLjL/view?usp=sharing) to be released this week, and [NLP_toolbox](https://uofi.box.com/s/d0ywa0qhlwxtpmrn3n0ye5vd9o4bbj1y). 
+First, download and decompress data/[NYTimes_orig](https://uofi.box.com/s/ib5fn1f1h0rbea1z05fwi98rs0481w9l), data/[VOA](https://drive.google.com/file/d/1VAwClg1rlQYFOzZiOEw6gskS7w50VLjL/view?usp=sharing), and [NLP_toolbox](https://uofi.box.com/s/d0ywa0qhlwxtpmrn3n0ye5vd9o4bbj1y). 
 
 ### Preprocess Data 
 
@@ -31,13 +30,24 @@ sh scripts/preproc_bert.sh "" caption ${dataset}  #step 1b
 sh scripts/preproc_bert.sh "" title ${dataset}  #step 1c
 sh scripts/preproc_bua.sh ${dataset}  #step 2
 sh scripts/preproc_IE.sh ${dataset}  #step 3
+python data_preproc/prepare_indicator_factors.py ${dataset}
+# git clone https://github.com/NVIDIA/apex.git && cd apex && pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" . && cd .. && rm -rf apex
+# git clone https://github.com/NVIDIA/apex.git
+# cd apex
+# pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" .
+# pip install .
+# cd ..
 ```
 
 But this is still in beta development phase. If you encounter set-up or runtime issues, please directly check out and run the original preprocessing source code and documentations linked above!
 
 ### Run Misinformation Detection
 ```
-python code/engine.py --data_dir data/${dataset} --ckpt_name ${dataset}
+# Example usage for doc-level detection task:
+python code/engine.py --task doc-level --data_dir [data/${dataset}/] --lrate 5e-6 --num_epochs 5 --ckpt_name ${dataset}
+
+Example usage for KE-level detection task:
+# python code/engine.py --task KE-level --data_dir [data/VOA/] --lrate 0.001 --ckpt_name VOA
 ```
 
 ### Credits & Acknowledgements
@@ -53,4 +63,3 @@ If you would like to view a jupyter notebook running in the remote server from y
 jupyter notebook --no-browser --port=5050  # in the server
 ssh -N -f -L localhost:5051:localhost:5050 username@server-entry-address  # from local machine
 ```
-

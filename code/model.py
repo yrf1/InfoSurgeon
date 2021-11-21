@@ -27,15 +27,23 @@ class SCAN(nn.Module):
 class InfoSurgeon(nn.Module):
     def __init__(self, use_IE=False, use_gen_f=True, device="cpu"):
         super(InfoSurgeon, self).__init__()
+        self.init_layer_edge = nn.Sequential(nn.Linear(300, 300), nn.ReLU())
+        self.enc1 = nn.LSTM(300, 300, 2, bidirectional=True)
+        self.enc2 = nn.LSTM(300, 300, 2, bidirectional=True)
+        self.WW = nn.Linear(2*300, 2*300)
+        self.fc = nn.Sequential(nn.Linear(1112+88, int(300/2)), \
+                nn.ReLU(), \
+                nn.Dropout(p=0.1))
+        self.fc_attn = nn.Linear(int(300/2)+3+50,int(300/2)+3+50)
+        self.classify_e = nn.Sequential(nn.Linear(306+2+2*49, 49), \
+            nn.Dropout(p=0.1), \
+            nn.ReLU(), nn.Linear(49,2))
         self.W_arts = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
         self.W_imgs = nn.Sequential(nn.Linear(2048, 512), nn.ReLU())
         self.W_cap = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
-        self.W = nn.Linear(2*300, 512)
+        self.W = nn.Linear(512,50)
         self.bert = AbsSummarizer(device)
         self.scan = SCAN()
-        self.classify_gen = nn.Sequential(nn.Linear(512*3, 512), \
-            nn.ReLU(), nn.Linear(512,56), \
-            nn.ReLU(), nn.Linear(56,2))
         self.classify_g = nn.Sequential(nn.Linear(512+3, 512), \
             nn.ReLU(), nn.Linear(512,56), \
             nn.ReLU(), nn.Linear(56,2))
@@ -44,16 +52,12 @@ class InfoSurgeon(nn.Module):
         self.relu = nn.ReLU()
         self.use_gen_f, self.use_IE = use_gen_f, use_IE
         self.device = device
-        self.attn_fc = nn.Linear(512,1)
         self.edge_fc_global = nn.Linear(1536,512)
         self.edge_fc_local = nn.Linear(1536,512)
-        self.edge_fc_local2global = nn.Linear(1624,512)
+        self.edge_fc_local2global = nn.Linear(1712,512) 
         self.funcs = {}
         self.funcs['global_edge'] = (fn.copy_u('global_x', 'm'), fn.mean('m', 'h'))
         self.funcs['local_edge'] = (fn.copy_u('local_x', 'm'), fn.mean('m', 'h'))
-        self.init_layer_edge = nn.Sequential(nn.Linear(300, 300), nn.ReLU())
-        self.enc1 = nn.LSTM(300, 300, 2, bidirectional=True)
-        self.enc2 = nn.LSTM(300, 300, 2, bidirectional=True)
     def edge_attention_global(self, edges):
         z2 = torch.cat([edges.src['global_x'], edges.data['global_x'], edges.dst['global_x']], dim=1)
         return {'e': F.leaky_relu(self.edge_fc_global(z2))}
@@ -67,6 +71,15 @@ class InfoSurgeon(nn.Module):
         return {'e': edges.data['e']}
     def reduce_func(self, nodes):
         return {'h': torch.mean(nodes.mailbox['e'], dim=1)}
+    def message_func_global2local(self, edges):
+        return {'h': edges.src['h']}
+    def reduce_func_global2local(self, nodes):
+        return {'h_g2l': torch.mean(nodes.mailbox['h'], dim=1)}
+    def final_message_func(self, edges):
+        return {'score' : edges.data['score'], 'score_attn':edges.data['score_attn']}
+    def final_reduce_func(self, nodes):
+        alpha = F.softmax(nodes.mailbox['score_attn'], dim=1)
+        return {'secondary_score' : torch.sum(alpha * nodes.mailbox['score'], dim=1)}
     def forward(self, stuff): 
         g, bert_data, img_data, cap_data, title_data, ind_facs = stuff
         src, tgt, segs, clss, mask_src, mask_tgt, mask_cls = bert_data
@@ -110,7 +123,7 @@ class InfoSurgeon(nn.Module):
         title_tok_counts = torch.sum(title_mask_src, dim=-1).unsqueeze(-1).expand_as(title_embeds)
         title_embeds /= (title_tok_counts.cuda() if self.device=="cuda" else title_tok_counts).float()
         art_title_reps = self.scan(title_word_embeds.unsqueeze(1), bert_feat, mask_src)
-        art_title_reps = torch.sum(art_title_reps, dim=-1)
+        art_title_reps = torch.sum(art_title_reps, dim=1)
         art_title_reps /= (art_tok_counts.cuda() if self.device=="cuda" else art_tok_counts).float()
         # Reference: https://github.com/dmlc/dgl/blob/ac282a5e35ca7f8abdc8c14bde0d7db1305e2fe9/examples/pytorch/hgt/model.py
         for i in range(len(g)): 
@@ -123,9 +136,8 @@ class InfoSurgeon(nn.Module):
         g.edges['local_edge'].data['local_x2'] = self.enc2(g.edges['local_edge'].data['local_x2'])[0]
         g.edges['local_edge'].data['local_x'] = g.edges['local_edge'].data['local_x1'].expand_as(g.edges['local_edge'].data['local_x2'])*\
                                                                                                  g.edges['local_edge'].data['local_x2']
-        g.edges['local_edge'].data['local_x'] = self.relu(self.W(self.relu(g.edges['local_edge'].data['local_x'])))
-        g.edges['local_edge'].data['local_x'] = torch.max(g.edges['local_edge'].data['local_x'], dim=1)[0]
-        g.edges['local_edge'].data['e'] = g.edges['local_edge'].data['local_x']#[:,-1,:]
+        g.edges['local_edge'].data['local_x'] = self.relu(self.WW(g.edges['local_edge'].data['local_x']))
+        g.edges['local_edge'].data['e'] = torch.max(g.edges['local_edge'].data['local_x'], dim=1)[0]
         g.edges['local2global_edge'].data['local2global_x'] = self.init_layer_edge(g.edges['local2global_edge'].data['local2global_x'])
         g.edges['local2global_edge'].data['local2global_x'] = self.enc1(g.edges['local2global_edge'].data['local2global_x'])[0][:,-1,:]
         g.update_all(self.message_func, self.reduce_func, etype="local_edge")
@@ -134,7 +146,17 @@ class InfoSurgeon(nn.Module):
         g.multi_update_all({etype : (self.message_func, self.reduce_func) \
                             for etype in ["global_edge","local2global_edge"]}, cross_reducer='mean')
         overall_feats = torch.cat((dgl.max_nodes(g, 'h', ntype="global_node"), ind_facs), dim=-1)
-        return self.classify_g(F.relu(overall_feats))
+        g.multi_update_all({etype : (self.message_func_global2local, self.reduce_func_global2local) \
+                            for etype in ["global2local_edge"]}, cross_reducer='mean')
+        g.edges['local_edge'].data['e'] = torch.cat((g.edges['local_edge'].data['e'],g.edges['local_edge'].data['local_x1'].squeeze(1)),dim=1)
+        g.edges['local_edge'].data['score'] = self.relu(self.fc(g.edges['local_edge'].data['e'])) 
+        g.apply_edges(lambda edges: {'score': torch.cat((g.edges['local_edge'].data['score'],g.edges['local_edge'].data['ind_feats'],\
+                self.relu(self.W(edges.src['h_g2l']))),dim=1)}, etype="local_edge")
+        g.edges['local_edge'].data['score_attn'] = F.leaky_relu(self.fc_attn(g.edges['local_edge'].data['score']))
+        g.update_all(self.final_message_func, self.final_reduce_func, etype="local_edge") 
+        g.apply_edges(lambda edges: {'score' : torch.cat((edges.data["score"],edges.src['secondary_score']), dim=1)}, etype="local_edge")
+        g.edges['local_edge'].data['score'] = self.classify_e(g.edges['local_edge'].data['score'])
+        return self.classify_g(F.relu(overall_feats)), g
     def compute_loss(self, pred_y, true_y):
         if self.use_IE:
             pred_y = pred_y.squeeze(0)

@@ -167,7 +167,7 @@ def main():
                         help='number of cpus to use for ray, 0 means no limit')
 
     parser.add_argument('--gpus', dest='gpu_id', help='GPU id(s) to use',
-                        default='0', type=str)
+                        default='3', type=str)
 
     parser.add_argument("--mode", default="caffe", type=str, help="bua_caffe, ...")
 

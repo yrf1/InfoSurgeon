@@ -1,8 +1,13 @@
-import os, json, spacy
+"""
+Example Usage:
+python data_preproc/prepare_indicator_factors.py NYTimes
+"""
+import os, sys, json, spacy
 
 nlp = spacy.load("en_core_web_sm")
 
-dataset = "NYTimes"
+dataset = sys.argv[1]
+
 output = {}
 for fID in os.listdir("data/"+dataset+"/txt"):
     fID = fID.replace(".txt","")

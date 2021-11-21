@@ -5,6 +5,7 @@ import json
 import torch 
 import bisect
 import pickle
+import random
 import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -21,7 +22,7 @@ class KEDataset(Dataset):
             bert_data_split = torch.load(data_dir+"/BERT_DATA_PATH/all.bert.pt")
             bert_data.extend(bert_data_split)
             cap_bert_data.extend(torch.load(data_dir+"/caption/BERT_DATA_PATH/all.bert.pt"))
-            title_bert_data.extend(torch.load(data_dir+"/caption_title_temp/BERT_DATA_PATH/all.bert.pt"))
+            title_bert_data.extend(torch.load(data_dir+"/title/BERT_DATA_PATH/all.bert.pt"))
         self.bert_data, self.cap_bert_data, self.title_bert_data = {}, {}, {}
         for data in bert_data:
             data["name"] = data["name"].replace(".","_")
@@ -36,19 +37,27 @@ class KEDataset(Dataset):
         with open(data_dir+"ind_facs.json", "r") as f:
             self.ind_facs = json.load(f)
         self.list_of_articleIDs = [x for x in self.list_of_articleIDs if str(x) in list(self.bert_data.keys())]
-        self.list_of_articleIDs = self.list_of_articleIDs[:1]
-        print(len(self.list_of_articleIDs), self.list_of_articleIDs[0])
+        print(len(self.list_of_articleIDs), self.list_of_articleIDs[0], type(self.list_of_articleIDs[0]))
+        self.glove_embed_avg = []
+        for k, v in self.glove_embed.items():
+            if len(v) > 0:
+                self.glove_embed_avg.append(v)
+        self.glove_embed_avg = np.mean(np.array(self.glove_embed_avg),axis=0)
         
     def __len__(self):
         return len(self.list_of_articleIDs)
 
     def __getitem__(self, idx):
         articleID = self.list_of_articleIDs[idx]
-        return self.get_gen_f(articleID) 
+        try:
+            return self.get_gen_f(articleID) 
+        except:
+            print(idx)
+            return
 
     def get_gen_f(self, articleID):
         im_data, cap_data = [], []
-        KE_label, label = [], self.mapping[self.mapping[0]==articleID][2].values[0]
+        label = self.mapping[self.mapping[0]==articleID][2].values[0]
         articleID = str(articleID)
         src, tgt, segs, clss = self.preprocess(self.bert_data[articleID])
         for i in range(1): #extendible to other img,cap pairs 
@@ -61,17 +70,27 @@ class KEDataset(Dataset):
                 cap_data.append(self.preprocess(self.cap_bert_data[articleID+'_cap_'+str(i)]))
         im_data = [np.zeros((36, 2048))] if len(im_data)==0 else im_data
         cap_data = None if len(cap_data)==0 else cap_data
-        title_data = self.preprocess(self.title_bert_data[articleID+"_title"]) if articleID+"_title" in self.title_bert_data else None
-        local_edges, local_nfeats, local_efeats1, local_efeats2, local2global_edges = self.get_local_f(articleID)
+        title_data = self.preprocess(self.title_bert_data[articleID+"_title"]) \
+                if articleID+"_title" in self.title_bert_data \
+                else self.preprocess(self.title_bert_data[articleID+"_metadata"]) \
+                if articleID+"_metadata" in self.title_bert_data else cap_data[0] 
+        cap_data = [title_data] if cap_data==None else cap_data
+        local_edges, local_nfeats, local_efeats1, local_efeats2, local_ind_feats, local_train_flag, KE_label, local2global_edges = self.get_local_f(articleID)
         g = {('global_node', 'global_edge', 'global_node'): (torch.tensor([0,0,1,0]), torch.tensor([1,2,2,3])), \
              ('local_node', 'local_edge', 'local_node'): (torch.tensor([x[0] for x in local_edges]), torch.tensor([x[1] for x in local_edges])), \
+             ('global_node', 'global2local_edge', 'local_node'): (torch.tensor([x[1] for x in local2global_edges]), torch.tensor([x[0] for x in local2global_edges])), \
              ('local_node', 'local2global_edge', 'global_node'): (torch.tensor([x[0] for x in local2global_edges]), torch.tensor([x[1] for x in local2global_edges]))}
         g = dgl.heterograph(g)
         g.nodes['local_node'].data['local_x'] = torch.tensor(local_nfeats).float()
         g.edges['local_edge'].data['local_x1'] = torch.tensor(local_efeats1).float()
         g.edges['local_edge'].data['local_x2'] = torch.tensor(local_efeats2).float()
+        g.edges['local_edge'].data['ind_feats'] = torch.tensor(local_ind_feats).float()
+        g.edges['local_edge'].data['local_train_flag'] = torch.tensor(local_train_flag).float()
+        if "VOA" in self.data_dir[0] or "VOA" in self.data_dir:
+            g.edges['local_edge'].data['labels'] = torch.tensor(KE_label).float()
+        g.edges['local_edge'].data['doc_label'] = torch.tensor([label]*g.edges['local_edge'].data['labels'].size()[0]).float()
         g.edges['local2global_edge'].data['local2global_x'] = torch.tensor(len(local2global_edges)*[self.str2idx("is part of")[0]]).float()
-        ind_fac = self.ind_facs[articleID]["0"] if "0" in self.ind_facs[articleID] else []
+        ind_fac = self.ind_facs[articleID]["0"] if "0" in self.ind_facs[articleID] else [0, 0, 0]
         return src, tgt, segs, clss, im_data, cap_data, title_data, ind_fac, KE_label, label, articleID, g
 
     def preprocess(self, ex):
@@ -94,11 +113,29 @@ class KEDataset(Dataset):
 
     def get_local_f(self, artID):
         art_triplets, _ = self.KG_data[artID]
+        if "VOA" in self.data_dir[0] or "VOA" in self.data_di:
+            art_triplet_labels = self.KG_data[artID][1]
         edges, node_feats = [], []
         edge_feats, node_lookup = [], {}
-        edge_feats2, train_ctr, counts = [], [], []
+        edge_feats2, train_flag, ind_feats = [], [], []
+        KE_label = []
         local2global_edges = []
+        if ("VOA" in self.data_dir[0] or "VOA" in self.data_dir) and 1 in art_triplet_labels:
+            first_neg, first_pos = [], []
+            for i in range(len(art_triplet_labels)):
+                if art_triplet_labels[i] == 0:
+                    first_neg.append(i)
+                if art_triplet_labels[i] == 1:
+                    first_pos.append(i)
+            first_neg, sec_neg, first_pos = random.choice(first_neg), random.choice(first_neg), random.choice(first_pos)
+        else:
+            first_neg, first_pos = 0, 0
         for i, trip in enumerate(art_triplets):
+            train_ctr_val = (i == first_neg or i == first_pos or \
+                    trip[0] == art_triplets[first_neg][0] or trip[2] == art_triplets[first_neg][0] or \
+                    trip[0] == art_triplets[first_pos][0] or trip[2] == art_triplets[first_pos][0] or \
+                    trip[0] == art_triplets[first_neg][1] or trip[2] == art_triplets[first_neg][1] or \
+                    trip[0] == art_triplets[first_pos][1] or trip[2] == art_triplets[first_pos][1]) and 1 in art_triplet_labels
             node_num1, node_num2 = trip[0], trip[2]
             if node_num1[0] not in node_lookup:
                 node_lookup[node_num1[0]] = len(node_lookup)
@@ -112,15 +149,18 @@ class KEDataset(Dataset):
             edge_feats.append(edge_feat)
             edge_feat2, edge_len2 = self.str2idx(self.getBK(trip[0],trip[2]), 512)
             if trip[0][1][:2] == "m." and trip[2][1][:2] == "m.":
-                counts.append([edge_len2, 0, 0])
+                ind_feats.append([edge_len2, 0, 0])
             elif trip[0][1][:2] == "m." or trip[2][1][:2] == "m.":
-                counts.append([0, edge_len2, 0])
+                ind_feats.append([0, edge_len2, 0])
             else:
-                counts.append([0, 0, edge_len2])
+                ind_feats.append([0, 0, edge_len2])
             edge_feats2.append(edge_feat2)
             edges.append((node_lookup[node_num1[0]], node_lookup[node_num2[0]]))
+            train_flag.append(train_ctr_val)
+            if "VOA" in self.data_dir[0] or "VOA" in self.data_dir:
+                KE_label.append(art_triplet_labels[i])
             local2global_edges.append((node_lookup[node_num1[0]],0))
-        return edges, node_feats, edge_feats, edge_feats2, local2global_edges
+        return edges, node_feats, edge_feats, edge_feats2, ind_feats, train_flag, KE_label, local2global_edges
 
     def shorten_relation(self, r):
         if "-" not in r and "actual" not in r:
@@ -136,8 +176,8 @@ class KEDataset(Dataset):
         embed = []
         for token in re.split("(['_\-.,<> ])", s.strip()):
             for tok in re.sub(r'(?<![A-Z\W])(?=[A-Z])', ' ', token).split(" "):
+                tok = tok.strip()
                 if len(tok) > 0:
-                    tok = tok.strip()
                     if tok in self.glove_embed:
                         token_embed = self.glove_embed[tok]
                     else:
@@ -146,8 +186,8 @@ class KEDataset(Dataset):
         embed_len = len(embed)
         for _ in range(pad_len-embed_len):
             embed.append(np.zeros(300))
-        if embed_len > 512:
-            embed, embed_len = embed[:512], 512
+        if embed_len > pad_len:
+            embed, embed_len = embed[:pad_len], pad_len
         return embed, embed_len
 
     def getBK(self, n1, n2):
